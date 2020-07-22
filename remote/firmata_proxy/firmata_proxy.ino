@@ -8,6 +8,8 @@
 
 #include <ETH.h>
 
+#define SERVO_PIN 13
+
 static bool ethIsConnected = false;
 WiFiServer ethServer(80);
 WiFiClient ethClient;
@@ -40,15 +42,31 @@ void setup() {
   ETH.begin();
   ethServer.begin();
   Serial.begin(57600);
-  
-  // pinMode(13, OUTPUT)
-  Serial.write(0xF4);
-  Serial.write(13);
-  Serial.write(1);
 }
 
 void loop () {
-  handleSocketData();
+//  handleSocketData();
+
+  int i = 0;
+
+  // pinMode(SERVO_PIN, PWM) (pin 19)
+  Serial.write(0xF4);
+  Serial.write(SERVO_PIN);
+  Serial.write(0x03);
+  
+  for (; i < 1024; i++) {
+    Serial.write(0x90);
+    Serial.write(SERVO_PIN);
+    Serial.write(i);
+    delay(400);
+  }
+  for (;i > 0; i--) {
+    Serial.write(0x90);
+    Serial.write(SERVO_PIN);
+    Serial.write(i);
+    delay(400);
+  }
+
   delay(1000);
 }
 
