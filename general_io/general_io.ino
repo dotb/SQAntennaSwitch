@@ -7,10 +7,10 @@
  * that don't require the sketch to be updated.
  * 
  * The protocol is 8 bytes long, consisting of 4 integers.
- * <-- deviceID | CMD | PIN | VALUE <--
+ * <-- deviceID | CMD | PIN/ID | VALUE <--
  * Int 1 - deviceID = the device addressed. This identifier allows multiple devices to share a serial line and be addressed individualy.
  * Int 2 - CMD = The command or instruction
- * Int 3 - PIN = the IO pin on which to execute the command
+ * Int 3 - PIN/ID = the IO pin or device ID on which to execute the command
  * Int 4 - VALUE = the value to send to the pin. Not all instructions require this parameter and anything can be sent if it's not required.
  * 
  * Example:
@@ -19,6 +19,8 @@
  * 1 1 13 0 = on device 1, set the pin mode of pin 13 to an input
  * 1 4 13 0 = on device 1, read the analogue value of pin 13. The last parameter can be sent as any Int value. The result is written back to the serial line as a String.
  */
+
+#include <Servo.h>
 
 /* 
  *  Change this device ID if you're connecting
@@ -29,15 +31,21 @@
 // Length of the command buffer.
 #define LENGTH_COMMAND 4
 
+#define SERVOS_MAX 6
+
 // Commands
 #define PIN_MODE 1
 #define DIGITAL_WRITE 2
 #define ANALOG_WRITE 3
 #define DIGITAL_READ 4
 #define ANALOG_READ 5
+#define SERVO_ADD 6
+#define SERVO_POSITION 7
 
 int command[LENGTH_COMMAND];
 int commandPos = 0;
+int nextServoPos = 0;
+Servo servos[SERVOS_MAX]; // Allow up to 6 servos (6 PWM channels).
 
 void setup() {
   Serial.begin(57600);
@@ -124,6 +132,12 @@ String executeCommand() {
       case ANALOG_READ:
         return handleAnalogRead();
         break;
+      case SERVO_ADD:
+        return addServoToPin();
+        break;
+      case SERVO_POSITION:
+        return setServoPosition();
+        break;
       default:
         return "?-CMD"; // Unknown command
     } 
@@ -179,4 +193,22 @@ String handleAnalogRead() {
   int pin = command[2];
   int value = analogRead(pin);
   return String(value);
+}
+
+String addServoToPin() {
+  int pin = command[2];
+  int servoID = nextServoPos;
+  servos[nextServoPos].attach(pin);
+  nextServoPos++;
+  if (nextServoPos >= SERVOS_MAX) {
+    nextServoPos = 0;
+  }
+  return String(servoID);
+}
+
+String setServoPosition() {
+  int servoID = command[2];
+  int position = command[3];
+  servos[servoID].write(position);
+  return String(position);
 }
