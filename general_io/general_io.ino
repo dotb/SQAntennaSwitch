@@ -1,8 +1,32 @@
+/*
+ * This sketch parses serial commands (instructons)
+ * and executes IO operations based on each issued
+ * command and associated parameters. Similar to the Firmata
+ * protocol, this sketch allows an arduino microcontroller to be
+ * operated by a host arduino or computer, using generic instructions
+ * that don't require the sketch to be updated.
+ * 
+ * The protocol is 8 bytes long, consisting of 4 integers.
+ * <-- deviceID | CMD | PIN | VALUE <--
+ * Int 1 - deviceID = the device addressed. This identifier allows multiple devices to share a serial line and be addressed individualy.
+ * Int 2 - CMD = The command or instruction
+ * Int 3 - PIN = the IO pin on which to execute the command
+ * Int 4 - VALUE = the value to send to the pin. Not all instructions require this parameter and anything can be sent if it's not required.
+ * 
+ * Example:
+ * 1 1 13 1 = on device 1, set the pin mode of pin 13 to an output
+ * 1 2 13 1 = on device 1, set pin 13 to HIGH
+ * 1 1 13 0 = on device 1, set the pin mode of pin 13 to an input
+ * 1 4 13 0 = on device 1, read the analogue value of pin 13. The last parameter can be sent as any Int value. The result is written back to the serial line as a String.
+ */
 
-// Protocol is 8 bytes long (consisting of 4 integers
-// <-- deviceID | CMD | PIN | VALUE 
-
+/* 
+ *  Change this device ID if you're connecting
+ *  multiple devices to the same serial line.
+ */
 #define THIS_DEVICE_ID 1
+
+// Length of the command buffer.
 #define LENGTH_COMMAND 4
 
 // Commands
@@ -20,32 +44,68 @@ void setup() {
   reset();
 }
 
+/*
+ * Continuously monitor the serial line and
+ * collect input into a command buffer.
+ * Execute the command when the buffer 
+ * is fulled (LENGTH_COMMAND is reached).
+ */
 void loop() {
   while (Serial.available() && commandPos < 6) {
-    char c = Serial.peek();
-    if ('\n' == c || '\r' == c) {
-      Serial.read(); // Throw away end-of-line characters
-    } else {
-      // Consume the value into our command
-      int input = Serial.parseInt();
-      command[commandPos] = input;
-      commandPos++;
-      Serial.print(" |");
-      Serial.print(input);
-      Serial.print("|");
-    }
+    populateCommandBuffer();
   }
 
   if (commandPos >= LENGTH_COMMAND) {
-    Serial.println(" ->");
-    Serial.println("RUN");
-    String result = executeCommand();
-    reset();
-    Serial.println(result);
+    executeCommandAndReset();
   }
-  delay(100);
 }
 
+/*
+ * Read one character (two bytes) into
+ * the command buffer. Skip end of line
+ * characters if the are received.
+ */
+void populateCommandBuffer() {
+  char c = Serial.peek();
+  if ('\n' == c || '\r' == c) {
+    // Throw away end-of-line characters
+    Serial.read();
+  } else {
+    // Consume the value into the command buffer
+    addInputToBuffer();
+  }
+}
+
+/*
+ * Add the integer value of the input,
+ * two bytes, to the command buffer.
+ */
+void addInputToBuffer() {
+  int input = Serial.parseInt();
+  command[commandPos] = input;
+  commandPos++;
+  Serial.print(" |");
+  Serial.print(input);
+  Serial.print("|");
+}
+
+/*
+ * Execute the command in the command 
+ * buffer and then reset to prepare for the 
+ * next command.
+ */
+void executeCommandAndReset() {
+  Serial.println(" ->");
+  Serial.println("RUN");
+  String result = executeCommand();
+  reset();
+  Serial.println(result);
+}
+
+/*
+ * Execute the command in the command buffer
+ * if the nominated device ID belongs to this device.
+ */
 String executeCommand() {
   if (command[0] == THIS_DEVICE_ID) {
     switch (command[1]) {
@@ -65,13 +125,18 @@ String executeCommand() {
         return handleAnalogRead();
         break;
       default:
-        return "?-CMD";
+        return "?-CMD"; // Unknown command
     } 
   } else {
-    return "?-ID";
+    return "?-ID"; // Instruction is not for this device
   }
 }
 
+/*
+ * Reset the system. This is called after a command is
+ * executed so that the command buffer and pointers
+ * can be cleared and reset.
+ */
 void reset() {
   commandPos = 0;
   for (int i = 0; i < LENGTH_COMMAND; i++) {
@@ -79,6 +144,10 @@ void reset() {
   }
 }
 
+/*
+ * Command handlers. Each method handles one instruction
+ * using the input parameters found in the command buffer.
+ */
 String handlePinMode() {
   int pin = command[2];
   int mode = command[3];
@@ -96,6 +165,7 @@ String handleDigitalWrite() {
 String handleAnalogWrite() {
   int pin = command[2];
   int value = command[3];
+  analogWrite(pin, value);
   return "OK";
 }
 
