@@ -34,14 +34,16 @@
 #define SERVOS_MAX 6
 
 // Commands
-#define PIN_MODE 1
-#define DIGITAL_WRITE 2
-#define ANALOG_WRITE 3
-#define DIGITAL_READ 4
-#define ANALOG_READ 5
-#define SERVO_ADD 6
-#define SERVO_POSITION 7
+#define DEBUG_TOGGLE 1
+#define PIN_MODE 2
+#define DIGITAL_WRITE 3
+#define ANALOG_WRITE 4
+#define DIGITAL_READ 5
+#define ANALOG_READ 6
+#define SERVO_ADD 7
+#define SERVO_POSITION 8
 
+bool debug = false;
 int command[LENGTH_COMMAND];
 int commandPos = 0;
 int nextServoPos = 0;
@@ -92,9 +94,9 @@ void addInputToBuffer() {
   int input = Serial.parseInt();
   command[commandPos] = input;
   commandPos++;
-  Serial.print(" |");
-  Serial.print(input);
-  Serial.print("|");
+  debugLog(" |");
+  debugLog(String(input));
+  debugLog("|");
 }
 
 /*
@@ -103,11 +105,23 @@ void addInputToBuffer() {
  * next command.
  */
 void executeCommandAndReset() {
-  Serial.println(" ->");
-  Serial.println("RUN");
+  debugLog(" ->");
+  debugLog("RUN");
   String result = executeCommand();
   reset();
   Serial.println(result);
+}
+
+void debugLog(String str) {
+  if (debug) {
+    Serial.print(str);
+  }
+}
+
+void debugLogLn(String str) {
+  if (debug) {
+    Serial.println(str);
+  }
 }
 
 /*
@@ -117,27 +131,22 @@ void executeCommandAndReset() {
 String executeCommand() {
   if (command[0] == THIS_DEVICE_ID) {
     switch (command[1]) {
+      case DEBUG_TOGGLE:
+        return toggleDebug();
       case PIN_MODE:
         return handlePinMode();
-        break;
       case DIGITAL_WRITE:
         return handleDigitalWrite();
-        break;
       case ANALOG_WRITE:
         return handleAnalogWrite();
-        break;
       case DIGITAL_READ:
         return handleDigitalRead();
-        break;
       case ANALOG_READ:
         return handleAnalogRead();
-        break;
       case SERVO_ADD:
         return addServoToPin();
-        break;
       case SERVO_POSITION:
         return setServoPosition();
-        break;
       default:
         return "?-CMD"; // Unknown command
     } 
@@ -162,6 +171,12 @@ void reset() {
  * Command handlers. Each method handles one instruction
  * using the input parameters found in the command buffer.
  */
+String toggleDebug() {
+  int enabled = command[2];
+  debug = enabled;
+  return String(enabled);  
+}
+
 String handlePinMode() {
   int pin = command[2];
   int mode = command[3];
