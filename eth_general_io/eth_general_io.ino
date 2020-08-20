@@ -21,6 +21,7 @@
  * 1 1 1 0  = on device 1, turn debug on
  */
 
+#include <UIPEthernet.h>
 #include <Servo.h>
 
 /* 
@@ -34,6 +35,10 @@
 
 #define SERVOS_MAX 6
 
+// Ethernet
+#define LISTENPORT 1000
+#define MACADDRESS 0x00,0x01,0x02,0x03,0x04,0x05
+
 // Commands
 #define DEBUG_TOGGLE 1
 #define PIN_MODE 2
@@ -44,14 +49,20 @@
 #define SERVO_ADD 7
 #define SERVO_POSITION 8
 
+EthernetServer ethServer = EthernetServer(LISTENPORT);
+EthernetClient ethClient;
+Servo servos[SERVOS_MAX]; // Allow up to 6 servos (6 PWM channels).
 bool debug = false;
 int command[LENGTH_COMMAND];
 int commandPos = 0;
 int nextServoPos = 0;
-Servo servos[SERVOS_MAX]; // Allow up to 6 servos (6 PWM channels).
+
 
 void setup() {
+  uint8_t mac[6] = {MACADDRESS};
   Serial.begin(57600);
+  Ethernet.begin(mac);
+  ethServer.begin();
   reset();
 }
 
@@ -61,14 +72,10 @@ void setup() {
  * Execute the command when the buffer 
  * is fulled (LENGTH_COMMAND is reached).
  */
-void loop() {
-  while (Serial.available() && commandPos < 6) {
-    populateCommandBuffer();
-  }
-
-  if (commandPos >= LENGTH_COMMAND) {
-    executeCommandAndReset();
-  }
+void loop() {  
+  checkForAnEthernetClient();
+  handleDataFromEthSocket();
+  cleanupEthernetClient();
 }
 
 /*
@@ -77,10 +84,10 @@ void loop() {
  * characters if the are received.
  */
 void populateCommandBuffer() {
-  char c = Serial.peek();
+  char c = ethClient.peek();
   if ('\n' == c || '\r' == c) {
     // Throw away end-of-line characters
-    Serial.read();
+    ethClient.read();
   } else {
     // Consume the value into the command buffer
     addInputToBuffer();
@@ -92,7 +99,7 @@ void populateCommandBuffer() {
  * two bytes, to the command buffer.
  */
 void addInputToBuffer() {
-  int input = Serial.parseInt();
+  int input = ethClient.parseInt();
   command[commandPos] = input;
   commandPos++;
   debugLog(" |");
@@ -110,18 +117,18 @@ void executeCommandAndReset() {
   debugLog("RUN");
   String result = executeCommand();
   reset();
-  Serial.println(result);
+  ethClient.println(result);
 }
 
 void debugLog(String str) {
   if (debug) {
-    Serial.print(str);
+    ethClient.print(str);
   }
 }
 
 void debugLogLn(String str) {
   if (debug) {
-    Serial.println(str);
+    ethClient.println(str);
   }
 }
 
@@ -227,4 +234,44 @@ String setServoPosition() {
   int position = command[3];
   servos[servoID].write(position);
   return String(position);
+}
+
+/*
+ * Methods that handle the enternet connection
+ */
+ /*
+ * Handle data from the ethernet socket.
+ * Data received on the ethernet socket is sent to
+ * the serial line.
+ */
+void handleDataFromEthSocket() {
+  if (ethClient && ethClient.connected()) {
+    while (ethClient.available() && commandPos < 6) {
+      populateCommandBuffer();
+    }
+
+    if (commandPos >= LENGTH_COMMAND) {
+      executeCommandAndReset();
+    }
+  }
+}
+
+/*
+ * Check for an ethernet client and set
+ * a pointer if one is available.
+ */
+void checkForAnEthernetClient() {
+  if (!ethClient || !ethClient.connected()) {
+    ethClient = ethServer.available();
+  }
+}
+
+/*
+ * Clean up the ethernet client poiner
+ * if the client has disconnected.
+ */
+void cleanupEthernetClient() {
+  if (ethClient && !ethClient.connected()) {
+    ethClient.stop();
+  }
 }
